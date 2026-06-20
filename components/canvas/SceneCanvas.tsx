@@ -54,11 +54,25 @@ export default function SceneCanvas() {
   }, [store, quality]);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
+    <div
+      className="pointer-events-none fixed inset-0 z-0"
+      aria-hidden="true"
+      // promote the canvas to its own compositor layer so overlays above it never
+      // force the browser to re-composite it (a flicker source on Intel iGPUs)
+      style={{ transform: 'translateZ(0)', willChange: 'transform' }}
+    >
       <Canvas
         dpr={dpr}
         camera={{ position: [0, 0, 5.2], fov: 35 }}
-        gl={{ antialias: false, alpha: false, powerPreference: 'high-performance' }}
+        // preserveDrawingBuffer keeps the last frame in the buffer between presents, so
+        // the compositor can never grab a cleared / half-drawn buffer — this is the fix
+        // for the intermittent "flash" flicker of WebGL canvases on Intel integrated GPUs.
+        gl={{
+          antialias: false,
+          alpha: false,
+          powerPreference: 'high-performance',
+          preserveDrawingBuffer: true,
+        }}
       >
         {/* the scene's own background — same as the site base, so the hero is seamless */}
         <color attach="background" args={['#0D0A0C']} />
@@ -70,10 +84,12 @@ export default function SceneCanvas() {
 
           <EffectComposer enableNormalPass={false} multisampling={0}>
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+            {/* luminanceSmoothing kept high (0.7): a wide soft knee keeps the glow
+                temporally stable as the mass churns. Mass shader untouched. */}
             <Bloom
               intensity={0.8}
               luminanceThreshold={0.6}
-              luminanceSmoothing={0.3}
+              luminanceSmoothing={0.7}
               radius={0.65}
               mipmapBlur
             />
