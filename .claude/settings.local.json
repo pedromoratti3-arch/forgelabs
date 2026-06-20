@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node --version; npm --version; Write-Output \"---DIR---\"; Get-ChildItem -Force | Select-Object Name; Write-Output \"---PWD---\"; \\(Get-Location\\).Path)",
+      "PowerShell(npm run build 2>&1)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(claude update *)",
+      "Bash(npm -v)",
+      "Bash(gh --version)",
+      "Bash(vercel --version)",
+      "Bash(git config *)",
+      "Bash(gh auth *)",
+      "Bash(vercel whoami *)",
+      "Bash(npm run *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
