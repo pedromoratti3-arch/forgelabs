@@ -53,6 +53,18 @@ export default function SceneCanvas() {
     store.current.quality = quality;
   }, [store, quality]);
 
+  // TEMP DIAGNOSTIC — URL toggles so the live site can A/B which layer flickers
+  // (localhost was unreachable). e.g. ?fx=0 disables postprocessing, ?mass=0 hides
+  // the mass, ?particles=0 removes the cloud. Remove this block after diagnosis.
+  const [flags] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      fx: p.get('fx') !== '0',
+      mass: p.get('mass') !== '0',
+      particles: p.get('particles') !== '0',
+    };
+  });
+
   return (
     <div
       className="pointer-events-none fixed inset-0 z-0"
@@ -78,10 +90,13 @@ export default function SceneCanvas() {
         <color attach="background" args={['#0D0A0C']} />
         <Suspense fallback={null}>
           <SceneDriver store={store} />
-          <ForgeEntity store={store} quality={quality} />
+          {flags.mass && <ForgeEntity store={store} quality={quality} />}
           {/* preloader particle cloud (anvil → shatter → mass). ~1500 on low/mobile. */}
-          <ForgeParticles store={store} count={quality === 'low' ? 1500 : 4000} />
+          {flags.particles && (
+            <ForgeParticles store={store} count={quality === 'low' ? 1500 : 4000} />
+          )}
 
+          {flags.fx && (
           <EffectComposer enableNormalPass={false} multisampling={0}>
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
             {/* luminanceSmoothing kept high (0.7): a wide soft knee keeps the glow
@@ -95,6 +110,7 @@ export default function SceneCanvas() {
             />
             <SMAA />
           </EffectComposer>
+          )}
         </Suspense>
       </Canvas>
     </div>
