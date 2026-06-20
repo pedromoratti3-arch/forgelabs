@@ -60,6 +60,16 @@ export function ForgeParticles({ store, count }: ForgeParticlesProps) {
 
   useFrame((_, delta) => {
     const s = store.current;
+
+    // The cloud only exists during the preloader (alpha fades 0→1→0). Once it's fully
+    // faded out we hide the <points> so three SKIPS the draw call entirely — otherwise
+    // these 4000 additive, depth-test-less sprites keep getting rasterized + blended
+    // every frame behind the hero mass (invisible, but real GPU cost), which on modest
+    // GPUs nudges frame time over the vsync budget and shows up as intermittent stutter.
+    const visible = s.particleAlpha > 0.001;
+    if (points.current) points.current.visible = visible;
+    if (!visible) return; // nothing to draw → no uniform work either
+
     const dt = Math.min(delta, 1 / 30);
     if (mat.current) {
       const u = mat.current.uniforms;
