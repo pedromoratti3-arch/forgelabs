@@ -1,6 +1,7 @@
-/* Display + body type from Fontshare (Satoshi / General Sans).
-   JetBrains Mono is loaded via next/font and exposed as --font-mono. */
-@import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=general-sans@400,500&display=swap');
+/* Type system (Fontshare): Clash Display for headings, Satoshi for body/UI.
+   display=swap so fonts never block first paint. JetBrains Mono is loaded via
+   next/font and exposed as --font-mono. */
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=satoshi@400,500,700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -8,8 +9,8 @@
 
 @layer base {
   :root {
-    --font-display: 'Satoshi', system-ui, sans-serif;
-    --font-sans: 'General Sans', system-ui, sans-serif;
+    --font-display: 'Clash Display', 'Satoshi', system-ui, sans-serif;
+    --font-sans: 'Satoshi', system-ui, sans-serif;
     color-scheme: dark;
   }
 
@@ -92,6 +93,31 @@ body.cursor-none * {
 @keyframes grainShift {
   from { transform: translate3d(0, 0, 0); }
   to { transform: translate3d(-200px, -200px, 0); } /* one tile → seamless loop */
+}
+
+/* ── Primary CTA glow ─────────────────────────────────────────────────────────
+   A soft rosa halo that gently pulses behind the "Iniciar projeto" button. Animated
+   via OPACITY only (a blurred radial layer on its own compositor layer) — no per-frame
+   box-shadow repaint. Intensifies on hover. (UI only — does not touch the 3D canvas.) */
+.cta-halo::before {
+  content: '';
+  position: absolute;
+  inset: -12px -18px;
+  border-radius: 20px;
+  background: radial-gradient(60% 70% at 50% 50%, rgba(219, 39, 119, 0.55), transparent 70%);
+  filter: blur(18px);
+  opacity: 0.3;
+  z-index: -1;
+  pointer-events: none;
+  will-change: opacity;
+  animation: ctaGlow 2.4s ease-in-out infinite;
+}
+.cta-halo:hover::before {
+  opacity: 0.7;
+}
+@keyframes ctaGlow {
+  0%, 100% { opacity: 0.22; }
+  50% { opacity: 0.5; }
 }
 
 /* ── Reduced motion: kill ambient/looping motion, keep simple states ──────── */

@@ -23,10 +23,10 @@ const config: Config = {
         line: 'rgba(245,240,242,0.08)', // linhas / bordas
       },
       fontFamily: {
-        // Display: grotesque geométrica e profissional (Satoshi, via Fontshare)
-        display: ['var(--font-display)', 'Satoshi', 'system-ui', 'sans-serif'],
-        // Corpo: neutra legível (General Sans, via Fontshare)
-        sans: ['var(--font-sans)', 'General Sans', 'system-ui', 'sans-serif'],
+        // Títulos: Clash Display (display geométrica de forte presença), via Fontshare
+        display: ['var(--font-display)', 'Clash Display', 'Satoshi', 'system-ui', 'sans-serif'],
+        // Corpo / UI: Satoshi (sans geométrica moderna), via Fontshare
+        sans: ['var(--font-sans)', 'Satoshi', 'system-ui', 'sans-serif'],
         // Detalhe técnico / labels: monospace (JetBrains Mono)
         mono: ['var(--font-mono)', 'JetBrains Mono', 'ui-monospace', 'monospace'],
       },
