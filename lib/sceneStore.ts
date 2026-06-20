@@ -27,6 +27,8 @@ export interface SceneStore {
   revealTarget: number;
   /** 1 = embers scattered far (cold) → 0 = converged to the mass (preload intro) */
   convergenceTarget: number;
+  /** HERO reaction mode 3 — 0 idle → 1 cursor is on/near the primary CTA (mass "wakes") */
+  ctaHoverTarget: number;
 
   // ── eased live values (read inside useFrame) ────────────────────────────────
   scroll: number;
@@ -34,6 +36,12 @@ export interface SceneStore {
   pointer: Vec2;
   reveal: number;
   convergence: number;
+  /** HERO reaction mode 1a — heavy-inertia pointer the mass parallax-follows (lerp ~0.06) */
+  follow: Vec2;
+  /** HERO reaction mode 1b — decaying cursor SPEED (0..1); drives the fluid distortion */
+  pointerVel: number;
+  /** eased ctaHoverTarget — read by the mass to intensify glow + ripples */
+  ctaHover: number;
 
   // ── section-transition scrub values (written by ScrollTriggers, read by the mass) ──
   /** 0 = hot hero mass → 1 = cooled, dimmed, slid out (HERO → MANIFESTO) */
@@ -57,6 +65,8 @@ export interface SceneStore {
 
   // ── environment ─────────────────────────────────────────────────────────────
   reducedMotion: boolean;
+  /** coarse pointer (touch / no cursor) → the mass animates autonomously */
+  coarse: boolean;
   quality: Quality;
   /** true once the preloader curtain has finished and the site is interactive */
   entered: boolean;
@@ -69,12 +79,16 @@ export function createSceneStore(): SceneStore {
     pointerTarget: { x: 0, y: 0 },
     revealTarget: 0,
     convergenceTarget: 1,
+    ctaHoverTarget: 0,
 
     scroll: 0,
     morph: 0,
     pointer: { x: 0, y: 0 },
     reveal: 0,
     convergence: 1,
+    follow: { x: 0, y: 0 },
+    pointerVel: 0,
+    ctaHover: 0,
 
     cool: 0,
 
@@ -87,6 +101,7 @@ export function createSceneStore(): SceneStore {
     pointerActive: false,
 
     reducedMotion: false,
+    coarse: false,
     quality: 'high',
     entered: false,
   };

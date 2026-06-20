@@ -21,8 +21,16 @@ function SceneDriver({ store }: { store: MutableRefObject<SceneStore> }) {
     s.morph = damp(s.morph, s.morphTarget, 3, dt);
     s.reveal = damp(s.reveal, s.revealTarget, 3, dt);
     s.convergence = damp(s.convergence, s.convergenceTarget, 2.5, dt);
+    // snappy pointer → drives the bulge DIRECTION + mesh rotation
     s.pointer.x = damp(s.pointer.x, s.pointerTarget.x, 7, dt);
     s.pointer.y = damp(s.pointer.y, s.pointerTarget.y, 7, dt);
+    // heavy-inertia follow (~lerp 0.06) → the mass trails the cursor as a viscous body
+    s.follow.x = damp(s.follow.x, s.pointerTarget.x, 3.5, dt);
+    s.follow.y = damp(s.follow.y, s.pointerTarget.y, 3.5, dt);
+    // cursor speed dissipates smoothly back to rest (~0.95/frame ≈ lambda 3)
+    s.pointerVel = damp(s.pointerVel, 0, 3, dt);
+    // CTA pulse: ~fast to intensify (~400ms), slower to relax (~700ms)
+    s.ctaHover = damp(s.ctaHover, s.ctaHoverTarget, s.ctaHoverTarget > s.ctaHover ? 8 : 4, dt);
   });
   return null;
 }
@@ -53,18 +61,6 @@ export default function SceneCanvas() {
     store.current.quality = quality;
   }, [store, quality]);
 
-  // TEMP DIAGNOSTIC — URL toggles so the live site can A/B which layer flickers
-  // (localhost was unreachable). e.g. ?fx=0 disables postprocessing, ?mass=0 hides
-  // the mass, ?particles=0 removes the cloud. Remove this block after diagnosis.
-  const [flags] = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    return {
-      fx: p.get('fx') !== '0',
-      mass: p.get('mass') !== '0',
-      particles: p.get('particles') !== '0',
-    };
-  });
-
   return (
     <div
       className="pointer-events-none fixed inset-0 z-0"
@@ -90,27 +86,23 @@ export default function SceneCanvas() {
         <color attach="background" args={['#0D0A0C']} />
         <Suspense fallback={null}>
           <SceneDriver store={store} />
-          {flags.mass && <ForgeEntity store={store} quality={quality} />}
+          <ForgeEntity store={store} quality={quality} />
           {/* preloader particle cloud (anvil → shatter → mass). ~1500 on low/mobile. */}
-          {flags.particles && (
-            <ForgeParticles store={store} count={quality === 'low' ? 1500 : 4000} />
-          )}
+          <ForgeParticles store={store} count={quality === 'low' ? 1500 : 4000} />
 
-          {flags.fx && (
           <EffectComposer enableNormalPass={false} multisampling={0}>
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
             {/* luminanceSmoothing kept high (0.7): a wide soft knee keeps the glow
-                temporally stable as the mass churns. Mass shader untouched. */}
+                temporally stable as the mass churns. */}
             <Bloom
-              intensity={0.8}
-              luminanceThreshold={0.6}
+              intensity={0.85}
+              luminanceThreshold={0.55}
               luminanceSmoothing={0.7}
-              radius={0.65}
+              radius={0.7}
               mipmapBlur
             />
             <SMAA />
           </EffectComposer>
-          )}
         </Suspense>
       </Canvas>
     </div>

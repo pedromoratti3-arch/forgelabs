@@ -1,12 +1,15 @@
 import { simplexNoise3D } from './noise';
 
 /**
- * FORGE ENTITY — vertex shader.
+ * FORGE ENTITY — vertex shader. "Matéria viva."
  *
- * Displaces a unit icosphere along its radial normal with slow, low-frequency simplex
- * noise → big, fluid, lively motion. Normals are re-derived from displaced neighbours
- * so the metal reads with real surface volume. Reacts to the pointer with a bulge,
- * without moving its centre.
+ * Displaces a unit icosphere along its radial normal. Three layers combine:
+ *   1. continuous organic churn — 2 low-freq simplex octaves (kept cheap for weak GPUs)
+ *   2. FLUID PUSH — the surface facing the cursor bulges; cursor SPEED (uVel) sends
+ *      viscous ripples emanating from the contact point (the "touch a liquid" feel)
+ *   3. WAKE — when the cursor is on the primary CTA (uReact) the churn speeds up and
+ *      the bulge deepens, as if the matter is waking up to be shaped.
+ * Normals are re-derived from displaced neighbours so the metal reads with real volume.
  */
 export const forgeVertexShader = /* glsl */ `
 uniform float uTime;
@@ -15,7 +18,9 @@ uniform float uFreq;
 uniform float uMorph;
 uniform float uReveal;
 uniform float uCool;
-uniform vec2  uMouse;
+uniform vec2  uMouse;   // eased pointer direction (-1..1)
+uniform float uVel;     // decaying cursor speed 0..1 → fluid distortion strength
+uniform float uReact;   // 0..1 CTA-hover "wake"
 
 varying vec3  vNormal;
 varying vec3  vWorldPos;
@@ -25,18 +30,23 @@ varying float vDisp;
 ${simplexNoise3D}
 
 float getDisp(vec3 p){
-  // two LOW-frequency layers travelling over time → large, free, fluid motion
-  float n1 = snoise(p * uFreq + vec3(0.0, uTime * 0.22, 0.0)) * 0.75;
-  float n2 = snoise(p * uFreq * 1.6 + vec3(uTime * 0.17, 0.0, uTime * 0.12)) * 0.4;
+  float t = uTime;
+
+  // 1 — organic churn (2 octaves). Accelerates slightly when the mass "wakes".
+  float wake = 1.0 + uReact * 0.5;
+  float n1 = snoise(p * uFreq + vec3(0.0, t * 0.22 * wake, 0.0)) * 0.75;
+  float n2 = snoise(p * uFreq * 1.9 + vec3(t * 0.17 * wake, 0.0, t * 0.12 * wake)) * 0.38;
   float d = n1 + n2;
 
-  // the mass reaches toward the pointer (reactive, but its centre never moves)
-  float md = dot(normalize(p), normalize(vec3(uMouse, 0.55)));
-  d += smoothstep(-0.2, 1.0, md) * 0.5 * (0.35 + 0.65 * min(length(uMouse), 1.0));
+  // 2 — FLUID PUSH toward the cursor + speed-driven ripples
+  vec3  mdir   = normalize(vec3(uMouse, 0.6));
+  float facing = smoothstep(-0.15, 1.0, dot(normalize(p), mdir));
+  d += facing * (0.16 + 0.34 * uReact);                       // steady viscous bulge
+  d += sin(facing * 7.0 - t * 5.0 * wake) * facing * uVel * 0.24; // ripples on flick
 
   float amp = uAmp * mix(1.0, 0.55, uMorph);
-  amp *= mix(0.4, 1.0, uReveal);
-  amp *= mix(1.0, 0.62, uCool); // settles / stops churning as it cools
+  amp *= mix(0.45, 1.0, uReveal);
+  amp *= mix(1.0, 0.6, uCool);   // settles / stops churning as it cools (scroll)
   return d * amp;
 }
 
@@ -71,20 +81,26 @@ void main(){
 `;
 
 /**
- * FORGE ENTITY — fragment shader (incandescent rosa).
+ * FORGE ENTITY — fragment shader. The material that kills the "rubbery" look:
  *
- * Dark metal lit by a key + fill light, with depth from a displacement-based AO term,
- * a glowing rosa fresnel rim and molten heat on the bulges. Outputs LINEAR colour
- * (glow >1.0) so the Bloom pass catches the rim/heat. Tone mapping + sRGB are handled
- * by the post-processing pipeline (EffectComposer), not here.
+ *   • cool KEY light sculpts the form (blue-ish) while a warm ROSA FILL gives identity
+ *     and depth — the cool/warm contrast reads as real lit metal, not matte rubber.
+ *   • FRESNEL RIM — a luminous rosa contour on the silhouette (etereal edge glow).
+ *   • INTERNAL GLOW (fake subsurface) — a soft warm core, strongest on the bulges, so
+ *     the mass looks lit from within (molten / alive).
+ *   • WAKE (uReact) intensifies the inner glow + rim when the CTA is hovered.
+ *
+ * Outputs LINEAR colour (glow >1.0) so the Bloom pass catches the rim/glow. Tone mapping
+ * + sRGB are handled by the post-processing pipeline (EffectComposer), not here.
  */
 export const forgeFragmentShader = /* glsl */ `
 uniform float uTime;
 uniform float uReveal;
 uniform float uCool;
+uniform float uReact;
 uniform float uFresnelPower;
 uniform vec3  uColorA; // rosa primário
-uniform vec3  uColorB; // rosa acento
+uniform vec3  uColorB; // rosa acento (brilho)
 uniform vec3  uBase;   // metal escuro
 
 varying vec3  vNormal;
@@ -95,43 +111,50 @@ varying float vDisp;
 void main(){
   vec3 N = normalize(vNormal);
   vec3 V = normalize(cameraPosition - vWorldPos);
+  float ndv = max(dot(N, V), 0.0);
 
-  // key + fill lights give the form real volume
-  vec3 keyL  = normalize(vec3(0.55, 0.8, 0.5));
-  vec3 fillL = normalize(vec3(-0.5, -0.15, 0.6));
-  float key  = max(dot(N, keyL), 0.0);
-  float fill = max(dot(N, fillL), 0.0) * 0.35;
+  // cool key (top-right) + warm rosa fill (lower-left) → sculpted, metallic depth
+  vec3 keyDir  = normalize(vec3(0.5, 0.85, 0.55));
+  vec3 fillDir = normalize(vec3(-0.6, -0.25, 0.5));
+  vec3 coolLight = vec3(0.55, 0.62, 0.85);
+  float key  = max(dot(N, keyDir), 0.0);
+  float fill = max(dot(N, fillDir), 0.0);
 
-  // ambient occlusion from the displacement: concavities (vDisp<0) sit in shadow
-  float ao = smoothstep(-0.30, 0.12, vDisp);
+  // ambient occlusion from displacement: concavities (vDisp<0) sit in shadow
+  float ao = smoothstep(-0.30, 0.14, vDisp);
 
-  // high-contrast dark metal base → depth and curvature
-  vec3 lit = mix(uBase, uColorA, 0.30);
-  vec3 base = mix(uBase * 0.10, lit, clamp(key * 0.95 + fill, 0.0, 1.0));
-  base *= mix(0.42, 1.0, ao);
+  // dark metal body lit by the two sources
+  vec3 body = uBase * 0.07;
+  body += coolLight * key * 0.34 * ao;     // cool sculpting
+  body += uColorA   * fill * 0.55 * ao;    // warm rosa fill (identity + depth)
 
-  // tight rosa specular, only on lit/raised areas
-  vec3 H = normalize(keyL + V);
-  float spec = pow(max(dot(N, H), 0.0), 60.0);
-  base += spec * uColorB * 0.7 * ao;
+  // tight, cool-tinted specular glint → metallic, not matte
+  vec3 H = normalize(keyDir + V);
+  float spec = pow(max(dot(N, H), 0.0), 80.0);
+  body += spec * (coolLight * 0.5 + uColorB * 0.5) * 1.1 * ao;
 
-  // incandescent fresnel rim
-  float fres = pow(1.0 - max(dot(N, V), 0.0), uFresnelPower);
-  vec3 rim = mix(uColorA, uColorB, fres) * fres;
+  // FRESNEL rim — luminous rosa contour (brightens on wake)
+  float fres = pow(1.0 - ndv, uFresnelPower);
+  vec3  rim  = mix(uColorA, uColorB, fres) * fres * (1.25 + uReact * 1.1);
 
-  // molten heat in the bulges + flowing energy (kept out of the crevices by ao)
-  float heat = smoothstep(0.02, 0.36, vDisp);
-  float flow = 0.5 + 0.5 * sin(vPos.y * 5.0 + uTime * 1.1);
-  vec3 hot = mix(uColorA, uColorB, 0.5) * heat * (0.6 + 0.4 * flow);
+  // INTERNAL GLOW (fake subsurface) — broad soft warm core, strongest on raised matter
+  float inner = pow(1.0 - ndv, 1.5);
+  float core  = smoothstep(-0.10, 0.40, vDisp);
+  vec3  glow  = mix(uColorA, uColorB, 0.5) * inner * (0.32 + 0.5 * core);
+  glow *= (0.8 + uReact * 1.7); // CTA hover → glows from within
 
-  vec3 color = base + rim * 0.9 + hot;
+  // molten flow on the bulges (kept out of crevices by displacement)
+  float flow = 0.5 + 0.5 * sin(vPos.y * 5.0 + uTime * 1.2);
+  vec3  hot  = mix(uColorA, uColorB, 0.5) * smoothstep(0.05, 0.40, vDisp)
+             * (0.5 + 0.5 * flow) * (0.55 + uReact * 0.8);
 
-  // HERO → MANIFESTO "resfriamento": dim the rosa incandescence and shift cool/dark
+  vec3 color = body + rim + glow + hot;
+
+  // HERO → MANIFESTO "resfriamento": shift cool/dark + dim as it scrolls out
   color = mix(color, color * vec3(0.5, 0.56, 0.82), uCool);
-  color *= mix(1.0, 0.5, uCool);
+  color *= mix(1.0, 0.45, uCool);
 
-  // fade in as the particles fuse into the mass (Act 3). Floor 0 → fully invisible
-  // during the preloader's earlier acts, so only the particle cloud is seen.
+  // fade in as the mass is revealed (preloader → hero)
   color *= smoothstep(0.0, 0.9, uReveal);
 
   gl_FragColor = vec4(color, 1.0);

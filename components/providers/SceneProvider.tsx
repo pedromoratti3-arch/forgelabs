@@ -37,6 +37,7 @@ export function SceneProvider({ children }: { children: ReactNode }) {
     const cores = navigator.hardwareConcurrency ?? 4;
     const coarse = window.matchMedia('(pointer: coarse)').matches;
     const dpr = window.devicePixelRatio ?? 1;
+    s.coarse = coarse; // no cursor → the mass self-animates (see ForgeEntity)
     if (coarse || cores <= 4) s.quality = 'low';
     else if (cores <= 8 || dpr > 2) s.quality = 'med';
     else s.quality = 'high';
@@ -44,9 +45,13 @@ export function SceneProvider({ children }: { children: ReactNode }) {
     return () => motionMq.removeEventListener('change', applyMotion);
   }, []);
 
-  // ── global pointer tracking ──────────────────────────────────────────────────
+  // ── global pointer tracking (position + SPEED) ────────────────────────────────
   useEffect(() => {
     const s = store.current;
+    let lastX = 0;
+    let lastY = 0;
+    let primed = false;
+
     const onMove = (e: PointerEvent) => {
       // pixels — consumed by the DOM cursor
       s.pointerPx.x = e.clientX;
@@ -54,6 +59,19 @@ export function SceneProvider({ children }: { children: ReactNode }) {
       // normalized -1..1 — consumed by the 3D entity for parallax / rotation
       s.pointerTarget.x = (e.clientX / window.innerWidth) * 2 - 1;
       s.pointerTarget.y = -((e.clientY / window.innerHeight) * 2 - 1);
+
+      // cursor SPEED → fluid distortion. Accumulate normalized px/frame into a 0..1
+      // value; SceneDriver dissipates it (~0.95/frame), so fast flicks spike the
+      // perturbation and it relaxes smoothly when the cursor slows/stops.
+      if (primed) {
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        const speed = Math.hypot(dx, dy);
+        s.pointerVel = Math.min(1, s.pointerVel + speed * 0.012);
+      }
+      lastX = e.clientX;
+      lastY = e.clientY;
+      primed = true;
     };
     window.addEventListener('pointermove', onMove, { passive: true });
     return () => window.removeEventListener('pointermove', onMove);
